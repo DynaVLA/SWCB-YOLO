@@ -1,0 +1,10 @@
+# DAGM 2007 weakly-supervised texture-defect benchmark (cross-domain evaluation, paper Table 8).
+# Public dataset: https://hci.iwr.uni-heidelberg.de/content/weakly-supervised-learning-industrial-optical-inspection
+# Treated here as single-class defect detection over the 10 texture classes. Use 640x640 input.
+path: ./datasets/DAGM
+train: images/train
+val: images/val
+test: images/test
+nc: 1
+names:
+  0: defect

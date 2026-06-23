@@ -1,0 +1,15 @@
+# NEU-DET surface-defect benchmark (cross-domain evaluation, paper Table 8).
+# Public dataset: http://faculty.neu.edu.cn/songkechen/zh_CN/zhym/263269/list/
+# 6 hot-rolled-steel surface-defect classes. Use 640x640 input for the cross-domain protocol.
+path: ./datasets/NEU-DET
+train: images/train
+val: images/val
+test: images/test
+nc: 6
+names:
+  0: crazing
+  1: inclusion
+  2: patches
+  3: pitted_surface
+  4: rolled-in_scale
+  5: scratches

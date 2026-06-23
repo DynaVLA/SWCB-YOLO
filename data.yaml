@@ -1,0 +1,22 @@
+# SWCB-YOLO dataset configuration.
+# Edit the paths below to point at your own dataset. The wind-turbine-blade dataset used in the
+# paper is operationally restricted (see the paper's Data availability statement); this file
+# ships with the three damage categories defined there so you can drop in compatible data.
+#
+# Expected layout (Ultralytics detection format):
+#   <dataset>/images/{train,val,test}/*.jpg
+#   <dataset>/labels/{train,val,test}/*.txt
+# For the CA-Shape-IoU loss, the label files must be polygon (segmentation) labels; see
+# tools/prepare_ca_fields.py.
+
+path: ./datasets/blade   # dataset root (relative to this file or absolute)
+train: images/train
+val: images/val
+test: images/test
+
+# Classes (crack, spalling, dirt) as defined in the paper.
+nc: 3
+names:
+  0: crack
+  1: spalling
+  2: dirt

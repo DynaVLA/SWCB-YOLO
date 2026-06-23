@@ -1,0 +1,19 @@
+# VisDrone-2019 UAV detection benchmark (cross-domain evaluation, paper Table 8).
+# Public dataset: https://github.com/VisDrone/VisDrone-Dataset
+# 10 object categories captured from drones. Use 640x640 input for the cross-domain protocol.
+path: ./datasets/VisDrone
+train: images/train
+val: images/val
+test: images/test
+nc: 10
+names:
+  0: pedestrian
+  1: people
+  2: bicycle
+  3: car
+  4: van
+  5: truck
+  6: tricycle
+  7: awning-tricycle
+  8: bus
+  9: motor
