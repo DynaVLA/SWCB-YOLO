@@ -1,0 +1,18 @@
+# WTBD multiclass UAV wind-turbine-blade defect benchmark (paper Table 8).
+# Public dataset: https://doi.org/10.6084/m9.figshare.30210175
+# Source descriptor: https://doi.org/10.1038/s41597-026-06762-x
+# Convert the released PASCAL VOC boxes to YOLO format and retain the provider's
+# standard train_val_test_split.txt indices (70:15:15). The paper reports the
+# test subset and uses 640x640 input. Do not reshuffle the split.
+path: ./datasets/WTBD
+train: images/train
+val: images/val
+test: images/test
+nc: 6
+names:
+  0: craze
+  1: corrosion
+  2: surface_injure
+  3: thunderstrike
+  4: crack
+  5: hide_craze

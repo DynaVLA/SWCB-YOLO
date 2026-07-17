@@ -1,12 +1,12 @@
 # SWCB-YOLO
 
-**Toward Robust and Real-Time Wind Turbine Blade Defect Detection in Unstructured Natural Environments**
+**Morphology-aware supervision improves real-time wind turbine blade defect localization in unstructured natural environments**
 
 This repository contains the official implementation of SWCB-YOLO, a lightweight edge detector
 for wind-turbine-blade defect inspection built on the YOLOv11n baseline. SWCB-YOLO targets the
 three practical failure modes of general detectors in operating wind farms: high-frequency
-background clutter, loss of slender high-aspect-ratio crack features, and nonlinear projection
-distortion from the doubly-curved blade surface.
+background clutter, loss of slender high-aspect-ratio crack features, and curved or bifurcated
+image-space defect geometries.
 
 The method introduces three components:
 
@@ -16,11 +16,12 @@ The method introduces three components:
    training only, so they correct bounding-box drift at **no inference cost**.
 2. **AS-Swin2** — an Asymmetric Strip Swin-TransformerV2 backbone block whose orthogonal strip
    windows give anisotropic receptive fields aligned with the crack propagation axis.
-3. **FS-DDA** — a Frequency-Spatial Dual-Domain Attention module that cascades 2D-DCT spectral
-   channel weighting into large-receptive-field spatial attention to separate high-frequency
-   clutter from weak defect edges.
+3. **FS-DDA** — a Frequency-Spatial Dual-Domain Attention module that pools each channel's DCT
+   magnitude into a spectral descriptor, predicts one scalar weight per channel, and then applies
+   large-receptive-field spatial attention. It is frequency-informed channel recalibration, not
+   independent filtering of frequency bands.
 
-> On the paper's field dataset, SWCB-YOLO reaches **89.0% mAP@50** and **66.4% mAP@50:95** with
+> On the paper's field dataset, SWCB-YOLO reaches **89.0% mAP@50** and **52.8% mAP@50:95** with
 > **3.70 M parameters at 35 FPS** on a Jetson Xavier NX.
 
 ---
@@ -56,7 +57,7 @@ contribution, the unmodified parts of the Ultralytics data pipeline are taken fr
 upstream release and the SWCB-YOLO files are overlaid on top. `setup.sh` automates this:
 
 ```bash
-git clone https://github.com/<your-org>/SWCB-YOLO.git
+git clone https://github.com/DynaVLA/SWCB-YOLO.git
 cd SWCB-YOLO
 bash setup.sh           # creates .venv, installs deps, overlays the upstream data pipeline
 ```
@@ -160,12 +161,30 @@ splits, input size, optimizer, schedule, batch size and epoch budget.
 
 ## Cross-domain benchmarks
 
-Dataset configs for the three open benchmarks used in the paper's cross-domain evaluation are in
-`configs/datasets/` (`neu_det.yaml`, `dagm.yaml`, `visdrone.yaml`). The paper uses each dataset's
-conventional `640x640` input for these runs:
+Dataset configs for all five open benchmarks used in the paper's cross-domain evaluation are in
+`configs/datasets/`:
+
+| Benchmark | Configuration | Fixed split and evaluation subset | Detection labels used in the paper |
+| --- | --- | --- | --- |
+| DTU/NordTank blade inspection | `dtu_blade.yaml` | released 70:15:15 train/validation/test partition; report test | visible surface-damage boxes merged into one `damage` class |
+| WTBD multiclass UAV blade defects | `wtbd.yaml` | provider's `train_val_test_split.txt` (70:15:15); report test | six released PASCAL VOC classes converted to YOLO boxes |
+| NEU-DET | `neu_det.yaml` | released 1,440/360 train/test partition; reserve a class-stratified 10% of train for validation with seed 42; report test | six steel-surface defect classes |
+| DAGM 2007 | `dagm.yaml` | released equal-sized Train/Test partitions within each texture class; reserve 10% of Train for validation with seed 42; report Test | defect regions evaluated as one detection class |
+| VisDrone-2019 | `visdrone.yaml` | official 6,471/548/1,610 train/validation/test-dev partition; report test-dev | ten aerial object classes |
+
+The source benchmarks differ in their original annotation formats and granularity. For the common
+detection protocol used in the paper, all annotations were standardized as horizontal bounding
+boxes. No pseudo-polygons or morphology fields were generated from boxes or weak spatial labels;
+therefore, the morphology-dependent terms of CA-Shape-IoU were disabled and the regression
+objective reduced to CIoU. The paper uses `640x640` input for every cross-domain run. The precise
+partition rules are also recorded in `configs/datasets/SPLIT_PROTOCOL.md`.
 
 ```bash
+python train.py --model yaml/swcb_yolo.yaml --data configs/datasets/dtu_blade.yaml --imgsz 640
+python train.py --model yaml/swcb_yolo.yaml --data configs/datasets/wtbd.yaml --imgsz 640
 python train.py --model yaml/swcb_yolo.yaml --data configs/datasets/neu_det.yaml --imgsz 640
+python train.py --model yaml/swcb_yolo.yaml --data configs/datasets/dagm.yaml --imgsz 640
+python train.py --model yaml/swcb_yolo.yaml --data configs/datasets/visdrone.yaml --imgsz 640
 ```
 
 ## Method details
@@ -215,10 +234,10 @@ yolo export model=runs/detect/swcb_yolo/weights/best.pt format=onnx imgsz=1280
 If you use this code, please cite the paper:
 
 ```bibtex
-@article{cao2025swcbyolo,
-  title   = {SWCB-YOLO: Toward Robust and Real-Time Wind Turbine Blade Defect Detection in Unstructured Natural Environments},
+@article{cao2026swcbyolo,
+  title   = {Morphology-aware supervision improves real-time wind turbine blade defect localization in unstructured natural environments},
   author  = {Cao, Bingyu and Zhou, Peng and Kan, Mingqi and Chen, Wei and Wang, Yingchao},
-  year    = {2025}
+  year    = {2026}
 }
 ```
 
