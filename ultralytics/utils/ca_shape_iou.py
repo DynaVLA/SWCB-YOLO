@@ -6,16 +6,17 @@ This module implements the three training-only sub-penalties of Eq. (11)-(15) an
 Algorithm 1 of the SWCB-YOLO paper, given the offline morphology fields produced by
 ``ultralytics/data/ca_shape_fields.py``:
 
-  * ``L_Curve``    - curvature-weighted SmoothL1 on sampled box-boundary keypoints,
-                     with the Bezier-derived adaptive weight ``w_i = 1 + beta * exp(-R_i / tau_c)``.
-  * ``L_Voronoi``  - truncated squared distance from sampled predicted-box boundary points
-                     to the ground-truth crack skeleton.
-  * ``L_Ratio``    - elongation constraint, active only for strongly elongated targets
-                     (gt aspect ratio > r_th), implemented with a smooth-L1 surrogate.
+  * ``L_hat_Curve``    - curvature-weighted SmoothL1 on sampled box-boundary keypoints,
+                         normalized by the ground-truth box diagonal.
+  * ``L_hat_Voronoi``  - truncated squared distance from sampled predicted-box boundary points
+                         to the ground-truth crack skeleton, normalized by ``d_max ** 2``.
+  * ``L_hat_Ratio``    - dimensionless elongation constraint, active only for strongly elongated
+                         targets (gt aspect ratio > r_th), implemented with a smooth-L1 surrogate.
 
-The total CA-Shape-IoU loss is ``L_Base + gamma * (L_Curve + L_Voronoi + L_Ratio)``, where the
-base term is the CIoU alignment loss computed in ``BboxLoss``. All quantities derived from
-polygon masks are precomputed offline, so these terms supervise the same four box parameters
+The total CA-Shape-IoU loss is
+``L_Base + gamma * (lambda_1 * L_hat_Curve + lambda_2 * L_hat_Voronoi + lambda_3 * L_hat_Ratio)``,
+where the base term is the CIoU alignment loss computed in ``BboxLoss``. All quantities derived
+from polygon masks are precomputed offline, so these terms supervise the same four box parameters
 as the base CIoU term and add no inference cost.
 
 Hyperparameters follow the paper exactly: ``gamma = 0.5``, ``beta = 2``, ``tau_c = 5``,
@@ -33,6 +34,9 @@ D_MAX = 10.0     # Voronoi distance truncation (px)
 R_TH = 8.0       # elongation activation threshold
 N_SAMPLE = 16    # boundary samples for the curvature term
 M_SAMPLE = 16    # boundary samples for the Voronoi term
+LAMBDA_CURVE = 1.0
+LAMBDA_VORONOI = 1.0
+LAMBDA_RATIO = 1.0
 
 
 def _box_boundary_points(boxes, n_per_side):
@@ -65,15 +69,17 @@ def _box_boundary_points(boxes, n_per_side):
     return torch.stack([xs, ys], dim=-1)  # (K, 4n, 2)
 
 
-def curvature_loss(pred_boxes, gt_curve_pts, gt_curve_radius):
-    """Curvature-weighted SmoothL1 between predicted boundary points and GT skeleton points.
+def curvature_loss(pred_boxes, gt_boxes, gt_curve_pts, gt_curve_radius):
+    """Normalized curvature-weighted SmoothL1 from predicted boundary points to the GT curve.
 
-    For each ground-truth curvature sample (with radius ``R_i``) the nearest predicted
-    boundary point is matched, weighted by ``w_i = 1 + beta * exp(-R_i / tau_c)`` so that
-    high-curvature regions receive up to ``1 + beta`` times the gradient (paper, Eq. (12)-(13)).
+    For each predicted boundary point, the nearest ground-truth curve sample is selected in the
+    forward pass. The discrete assignment is detached, while gradients flow through the matched
+    SmoothL1 distance to the predicted box. Each distance is divided by the ground-truth box
+    diagonal and weighted by ``w_i = 1 + beta * exp(-R_i / tau_c)``.
 
     Args:
         pred_boxes (torch.Tensor): (K, 4) predicted boxes (xyxy, px).
+        gt_boxes (torch.Tensor): (K, 4) ground-truth boxes (xyxy, px).
         gt_curve_pts (list[torch.Tensor]): per-box (32, 2) curvature sample points.
         gt_curve_radius (list[torch.Tensor]): per-box (32,) radii of curvature.
 
@@ -83,20 +89,25 @@ def curvature_loss(pred_boxes, gt_curve_pts, gt_curve_radius):
     if pred_boxes.numel() == 0:
         return pred_boxes.new_zeros(())
     pred_pts = _box_boundary_points(pred_boxes, N_SAMPLE)  # (K, 4N, 2)
+    gt_diag = torch.sqrt(
+        (gt_boxes[:, 2] - gt_boxes[:, 0]).clamp(min=1e-6).pow(2)
+        + (gt_boxes[:, 3] - gt_boxes[:, 1]).clamp(min=1e-6).pow(2)
+    )
 
     losses = []
     for i in range(pred_boxes.shape[0]):
         gpts = gt_curve_pts[i]
         if gpts is None or gpts.numel() == 0:
             continue
-        radius = gt_curve_radius[i]
-        w = 1.0 + BETA * torch.exp(-radius / TAU_C)  # (32,)
-        # nearest predicted boundary point for each gt curvature sample
-        d = torch.cdist(gpts, pred_pts[i])  # (32, 4N)
-        idx = d.argmin(dim=1)  # (32,)
-        matched = pred_pts[i][idx]  # (32, 2)
-        sl1 = F.smooth_l1_loss(matched, gpts, reduction="none").sum(dim=-1)  # (32,)
-        losses.append((w * sl1).mean())
+        # Nearest GT curve sample for each predicted boundary point. The index is a
+        # stop-gradient correspondence; the matched distance remains differentiable.
+        d = torch.cdist(pred_pts[i], gpts)  # (4N, n_curve)
+        idx = d.detach().argmin(dim=1)  # (4N,)
+        matched = gpts[idx]  # (4N, 2)
+        radius = gt_curve_radius[i][idx]
+        w = 1.0 + BETA * torch.exp(-radius / TAU_C)
+        sl1 = F.smooth_l1_loss(pred_pts[i], matched, reduction="none").sum(dim=-1)
+        losses.append((w * sl1 / gt_diag[i]).mean())
     if not losses:
         return pred_boxes.new_zeros(())
     return torch.stack(losses).mean()
@@ -105,7 +116,7 @@ def curvature_loss(pred_boxes, gt_curve_pts, gt_curve_radius):
 def voronoi_loss(pred_boxes, gt_skeletons):
     """Truncated squared distance from predicted boundary points to the GT crack skeleton.
 
-    Implements ``L_Voronoi = (1/M) * sum min(d_j^2, d_max^2)`` (paper, Eq. (14)); the
+    Implements ``L_hat_Voronoi = (1/M) * sum min(d_j^2, d_max^2) / d_max^2``; the
     truncation prevents outlier boundary points from producing exploding early-training
     gradients.
 
@@ -128,7 +139,7 @@ def voronoi_loss(pred_boxes, gt_skeletons):
         d = torch.cdist(pred_pts[i], skel)  # (4M, s)
         dmin = d.min(dim=1).values  # (4M,)
         d2 = torch.clamp(dmin ** 2, max=D_MAX ** 2)
-        losses.append(d2.mean())
+        losses.append((d2 / (D_MAX ** 2)).mean())
     if not losses:
         return pred_boxes.new_zeros(())
     return torch.stack(losses).mean()
@@ -160,13 +171,20 @@ def ratio_loss(pred_boxes, gt_boxes, gt_elong):
     if gate.sum() == 0:
         return pred_boxes.new_zeros(())
 
-    rel_w = F.smooth_l1_loss(pw / gw, torch.ones_like(pw), reduction="none")
-    rel_h = F.smooth_l1_loss(ph / gh, torch.ones_like(ph), reduction="none")
+    rel_w = F.smooth_l1_loss(pw - gw, torch.zeros_like(pw), reduction="none") / gw
+    rel_h = F.smooth_l1_loss(ph - gh, torch.zeros_like(ph), reduction="none") / gh
     term = (rel_w + rel_h) * gate
     return term.sum() / gate.sum().clamp(min=1.0)
 
 
-def morphological_loss(pred_boxes, gt_boxes, fields):
+def morphological_loss(
+    pred_boxes,
+    gt_boxes,
+    fields,
+    lambda_curve=LAMBDA_CURVE,
+    lambda_voronoi=LAMBDA_VORONOI,
+    lambda_ratio=LAMBDA_RATIO,
+):
     """Aggregate the three morphological terms for a batch of matched predictions.
 
     Args:
@@ -176,9 +194,9 @@ def morphological_loss(pred_boxes, gt_boxes, fields):
             ``curve_radius`` and ``elongation`` (lists / tensors aligned to the K matches).
 
     Returns:
-        torch.Tensor: scalar ``L_Morph = L_Curve + L_Voronoi + L_Ratio``.
+        torch.Tensor: scalar normalized and weighted morphological loss.
     """
-    l_curve = curvature_loss(pred_boxes, fields["curve_pts"], fields["curve_radius"])
+    l_curve = curvature_loss(pred_boxes, gt_boxes, fields["curve_pts"], fields["curve_radius"])
     l_voronoi = voronoi_loss(pred_boxes, fields["skeleton"])
     l_ratio = ratio_loss(pred_boxes, gt_boxes, fields["elongation"])
-    return l_curve + l_voronoi + l_ratio
+    return lambda_curve * l_curve + lambda_voronoi * l_voronoi + lambda_ratio * l_ratio

@@ -41,7 +41,7 @@ The method introduces three components:
 │   └── data/ca_shape_fields.py        # offline skeleton / curvature / Voronoi field generator (this work)
 ├── yaml/
 │   ├── swcb_yolo.yaml                 # full SWCB-YOLO architecture (Figure 2)
-│   └── ablation/                      # per-component ablation configs (Table 2 rows)
+│   └── ablation/                      # per-component ablation configs (Table 4 rows)
 ├── configs/datasets/                  # dataset configs for the open cross-domain benchmarks
 ├── tools/prepare_ca_fields.py         # one-shot offline field precomputation for a dataset
 ├── train.py / val.py / predict.py     # training, evaluation and inference entry points
@@ -143,7 +143,7 @@ NMS IoU 0.7).
 python predict.py --weights runs/detect/swcb_yolo/weights/best.pt --source test/ --imgsz 1280 --save
 ```
 
-## Reproducing the ablation study (Table 2)
+## Reproducing the ablation study (Table 4)
 
 Each component can be enabled independently. The configs in `yaml/ablation/` map directly to the
 ablation rows; CA-Shape-IoU is toggled by the `--cashapeiou` flag rather than the architecture.
@@ -153,8 +153,8 @@ ablation rows; CA-Shape-IoU is toggled by the `--cashapeiou` flag rather than th
 | YOLOv11n baseline | `python train.py --model yaml/ablation/yolov11n_baseline.yaml --data data.yaml` |
 | + AS-Swin2 | `python train.py --model yaml/ablation/yolov11n_asswin2.yaml --data data.yaml` |
 | + FS-DDA | `python train.py --model yaml/ablation/yolov11n_fsdda.yaml --data data.yaml` |
-| + CA-Shape-IoU | `python train.py --model yaml/ablation/yolov11n_baseline.yaml --data data.yaml --cashapeiou --ca-fields <fields>/train` |
-| **Full SWCB-YOLO** | `python train.py --model yaml/swcb_yolo.yaml --data data.yaml --cashapeiou --ca-fields <fields>/train` |
+| + CA-Shape-IoU | `python train.py --model yaml/ablation/yolov11n_baseline.yaml --data data.yaml --cashapeiou --ca-fields datasets/blade/ca_fields/train` |
+| **Full SWCB-YOLO** | `python train.py --model yaml/swcb_yolo.yaml --data data.yaml --cashapeiou --ca-fields datasets/blade/ca_fields/train` |
 
 For the identical-protocol comparison, train every configuration from scratch with the same
 splits, input size, optimizer, schedule, batch size and epoch budget.
@@ -192,14 +192,17 @@ python train.py --model yaml/swcb_yolo.yaml --data configs/datasets/visdrone.yam
 ### CA-Shape-IoU loss
 
 The total loss is `L = L_Base + γ · L_Morph` with `γ = 0.5`, where `L_Base` is the CIoU
-alignment term and `L_Morph = L_Curve + L_Voronoi + L_Ratio`:
+alignment term and the normalized morphological component is
+`L_Morph = λ1·L̂_Curve + λ2·L̂_Voronoi + λ3·L̂_Ratio`. The default per-term weights are
+`(λ1, λ2, λ3) = (1, 1, 1)`.
 
-- **`L_Curve`** — curvature-weighted SmoothL1 on sampled box-boundary keypoints, with the
+- **`L̂_Curve`** — curvature-weighted SmoothL1 on sampled box-boundary keypoints, normalized by
+  the corresponding ground-truth box diagonal. It uses the
   adaptive weight `w_i = 1 + β · exp(−R_i / τ_c)` (`β = 2`, `τ_c = 5`), so high-curvature regions
   receive up to `1 + β = 3×` the gradient while staying bounded.
-- **`L_Voronoi`** — truncated squared distance from predicted-box boundary points to the GT crack
-  skeleton, `min(d_j², d_max²)` with `d_max = 10 px`.
-- **`L_Ratio`** — an elongation constraint active only for strongly elongated targets
+- **`L̂_Voronoi`** — truncated squared distance from predicted-box boundary points to the GT crack
+  skeleton, `min(d_j², d_max²) / d_max²`, with `d_max = 10 px`.
+- **`L̂_Ratio`** — a dimensionless elongation constraint active only for strongly elongated targets
   (GT aspect ratio `> r_th = 8`), implemented with a smooth-`L1` surrogate.
 
 All polygon-derived quantities are computed **offline**; the detection head and inference cost

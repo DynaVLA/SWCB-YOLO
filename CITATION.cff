@@ -1,6 +1,7 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite the associated paper."
-title: "SWCB-YOLO: Toward Robust and Real-Time Wind Turbine Blade Defect Detection in Unstructured Natural Environments"
+title: "SWCB-YOLO"
+type: software
 authors:
   - family-names: Cao
     given-names: Bingyu
@@ -20,3 +21,19 @@ keywords:
   - curvature-aware loss
   - edge computing
 license: AGPL-3.0
+repository-code: "https://github.com/DynaVLA/SWCB-YOLO"
+preferred-citation:
+  type: article
+  title: "Morphology-aware supervision improves real-time wind turbine blade defect localization in unstructured natural environments"
+  authors:
+    - family-names: Cao
+      given-names: Bingyu
+    - family-names: Zhou
+      given-names: Peng
+    - family-names: Kan
+      given-names: Mingqi
+    - family-names: Chen
+      given-names: Wei
+    - family-names: Wang
+      given-names: Yingchao
+  year: 2026

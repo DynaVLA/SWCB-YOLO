@@ -1,4 +1,4 @@
-# WTBD multiclass UAV wind-turbine-blade defect benchmark (paper Table 8).
+# WTBD multiclass UAV wind-turbine-blade defect benchmark (paper Table 14).
 # Public dataset: https://doi.org/10.6084/m9.figshare.30210175
 # Source descriptor: https://doi.org/10.1038/s41597-026-06762-x
 # Convert the released PASCAL VOC boxes to YOLO format and retain the provider's

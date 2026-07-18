@@ -1,4 +1,4 @@
-# DTU/NordTank wind-turbine-blade inspection benchmark (paper Table 8).
+# DTU/NordTank wind-turbine-blade inspection benchmark (paper Table 14).
 # Source study: https://doi.org/10.3390/en12040676
 # The paper retains the released 70:15:15 train/validation/test partition from
 # the public detection annotations, treats all annotated visible surface damage

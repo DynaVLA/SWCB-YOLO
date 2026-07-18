@@ -1,4 +1,4 @@
-# NEU-DET surface-defect benchmark (cross-domain evaluation, paper Table 8).
+# NEU-DET surface-defect benchmark (cross-domain evaluation, paper Table 14).
 # Public dataset: http://faculty.neu.edu.cn/songkechen/zh_CN/zhym/263269/list/
 # Retain the released 1,440-image training and 360-image test partition. Reserve
 # a class-stratified 10% of the released training images for validation with

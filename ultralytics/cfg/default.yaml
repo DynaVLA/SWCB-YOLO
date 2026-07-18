@@ -14,6 +14,10 @@ enmpdiou: False
 ensiou: False
 cashapeiou: False # (bool) enable Curvature-Aware Shape IoU (CA-Shape-IoU) loss (SWCB-YOLO)
 ca_fields: # (str, optional) directory of offline CA-Shape-IoU morphology .npz caches
+ca_gamma: 0.5 # (float) balance weight for the normalized morphological loss
+ca_lambda_curve: 1.0 # (float) weight of normalized curvature term
+ca_lambda_voronoi: 1.0 # (float) weight of normalized skeleton-distance term
+ca_lambda_ratio: 1.0 # (float) weight of dimensionless elongation term
 nwdloss: False
 iou_ratio: 0.5
 

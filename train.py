@@ -22,8 +22,9 @@ Reproduce the plain YOLOv11n baseline::
 
 Notes
 -----
-* The optimizer defaults to AdamW with lr0=1e-3 and weight_decay=0.05, matching the paper's
-  Implementation Details; SGD tends to oscillate in the asymmetric attention layers.
+* The optimizer defaults to AdamW with lr0=1e-3 and weight_decay=0.05. Cosine learning-rate
+  decay, a 3-epoch warm-up, and disabling strong Mosaic augmentation for the final 15 epochs
+  follow the paper's Implementation Details.
 * ``--cashapeiou`` enables the Curvature-Aware Shape IoU loss. Its morphological terms also
   require ``--ca-fields`` to point at the offline cache produced by ``tools/prepare_ca_fields.py``.
   Without the cache the loss falls back to its CIoU base term and training still proceeds.
@@ -54,6 +55,14 @@ def parse_args():
                         help="enable the Curvature-Aware Shape IoU loss")
     parser.add_argument("--ca-fields", type=str, default=None,
                         help="directory of offline CA-Shape-IoU morphology .npz caches")
+    parser.add_argument("--ca-gamma", type=float, default=0.5,
+                        help="weight of the normalized morphological loss")
+    parser.add_argument("--ca-lambda-curve", type=float, default=1.0,
+                        help="weight of the normalized curvature term")
+    parser.add_argument("--ca-lambda-voronoi", type=float, default=1.0,
+                        help="weight of the normalized skeleton-distance term")
+    parser.add_argument("--ca-lambda-ratio", type=float, default=1.0,
+                        help="weight of the dimensionless elongation term")
     return parser.parse_args()
 
 
@@ -70,10 +79,17 @@ def main():
         optimizer=args.optimizer,
         lr0=args.lr0,
         weight_decay=args.weight_decay,
+        cos_lr=True,
+        warmup_epochs=3.0,
+        close_mosaic=15,
         name=args.name,
         seed=args.seed,
         cashapeiou=args.cashapeiou,
         ca_fields=args.ca_fields,
+        ca_gamma=args.ca_gamma,
+        ca_lambda_curve=args.ca_lambda_curve,
+        ca_lambda_voronoi=args.ca_lambda_voronoi,
+        ca_lambda_ratio=args.ca_lambda_ratio,
     )
 
 

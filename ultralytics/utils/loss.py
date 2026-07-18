@@ -16,22 +16,6 @@ from . import ca_fields_provider
 from pathlib import Path
 
 
-def _scale_fields(fields, factor):
-    """Scale all spatial morphology fields (skeleton / curvature points / radii) by ``factor``.
-
-    Distances and radii live in canvas pixels; this rescales them consistently with the box
-    rescaling applied before calling the morphological loss, keeping the curvature decay and
-    Voronoi truncation thresholds in a stable numeric range.
-    """
-    scaled = {
-        "skeleton": [s * factor for s in fields["skeleton"]],
-        "curve_pts": [c * factor for c in fields["curve_pts"]],
-        "curve_radius": [r * factor for r in fields["curve_radius"]],
-        "elongation": fields["elongation"],
-    }
-    return scaled
-
-
 def wasserstein_loss(pred, target, eps=1e-7, constant=12.8):
     r"""Implementation of paper `Enhancing Geometric Factors into
     Model Learning and Inference for Object Detection and Instance
@@ -282,6 +266,10 @@ class v8DetectionLoss:
         self.enmpdiou = self.hyp.enmpdiou
         self.ensiou = self.hyp.ensiou
         self.cashapeiou = getattr(self.hyp, "cashapeiou", False)
+        self.ca_gamma = float(getattr(self.hyp, "ca_gamma", ca_shape_iou.GAMMA))
+        self.ca_lambda_curve = float(getattr(self.hyp, "ca_lambda_curve", ca_shape_iou.LAMBDA_CURVE))
+        self.ca_lambda_voronoi = float(getattr(self.hyp, "ca_lambda_voronoi", ca_shape_iou.LAMBDA_VORONOI))
+        self.ca_lambda_ratio = float(getattr(self.hyp, "ca_lambda_ratio", ca_shape_iou.LAMBDA_RATIO))
         # Configure the offline morphology-field provider for CA-Shape-IoU, if enabled.
         if self.cashapeiou:
             ca_dir = getattr(self.hyp, "ca_fields", None)
@@ -379,7 +367,7 @@ class v8DetectionLoss:
                     pred_bboxes, target_bboxes, fg_mask, stride_tensor, batch, imgsz
                 )
                 if l_morph is not None:
-                    loss[0] = loss[0] + ca_shape_iou.GAMMA * l_morph
+                    loss[0] = loss[0] + self.ca_gamma * l_morph
 
         loss[0] *= self.hyp.box  # box gain
         loss[1] *= self.hyp.cls  # cls gain
@@ -467,10 +455,16 @@ class v8DetectionLoss:
             "curve_radius": all_crad,
             "elongation": torch.tensor(all_elong, dtype=torch.float32, device=device),
         }
-        # normalize by canvas so the morphological magnitudes are scale-invariant
-        l_morph = ca_shape_iou.morphological_loss(pred_boxes / canvas * 100.0,
-                                                  gt_boxes / canvas * 100.0,
-                                                  _scale_fields(fields, 100.0 / canvas))
+        # Keep boxes and precomputed fields in the same canvas-pixel coordinate system.
+        # The curve and Voronoi terms perform the paper's explicit normalization internally.
+        l_morph = ca_shape_iou.morphological_loss(
+            pred_boxes,
+            gt_boxes,
+            fields,
+            lambda_curve=self.ca_lambda_curve,
+            lambda_voronoi=self.ca_lambda_voronoi,
+            lambda_ratio=self.ca_lambda_ratio,
+        )
         return l_morph
 
 

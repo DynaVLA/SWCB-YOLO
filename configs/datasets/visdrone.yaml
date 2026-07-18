@@ -1,4 +1,4 @@
-# VisDrone-2019 UAV detection benchmark (cross-domain evaluation, paper Table 8).
+# VisDrone-2019 UAV detection benchmark (cross-domain evaluation, paper Table 14).
 # Public dataset: https://github.com/VisDrone/VisDrone-Dataset
 # Retain the official 6,471/548/1,610 train/validation/test-dev partition,
 # report metrics on test-dev, and use 640x640 input for the cross-domain protocol.
